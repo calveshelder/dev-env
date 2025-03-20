@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+git clone https://aur.archlinux.org/zig-bin.git $HOME/personal/ghostty/zig
+cd $HOME/personal/ghostty/zig
+
+makepkg -si
+
+git clone https://github.com/ghostty-org/ghostty $HOME/personal/ghostty/ghostty-src
+cd $HOME/personal/ghostty/ghostty-src
+
+sudo pacman -S gtk4 libadwaita blueprint-compiler
+sudo zig build -p /usr -Doptimize=ReleaseFast
+
