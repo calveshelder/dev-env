@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+/bin/bash -c "$(curl -fsSL https://get.lando.dev/setup-lando.sh)"
+
+# Run without re-starting shell.
+. /home/helder/.lando/bin/lando shellenv
