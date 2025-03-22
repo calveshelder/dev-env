@@ -1,5 +1,9 @@
 # Create a new directory for this example and enter it
-mkdir drupal11; cd drupal11
+cd $HOME/personal
+if [ ! -d drupal11 ]; then
+	mkdir drupal11; 
+fi
+cd $HOME/personal/drupal11
 
 # Initialize a new lando drupal using vanilla Drupal 11
 lando init \
