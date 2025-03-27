@@ -60,4 +60,3 @@ copy_file() {
 }
 
 copy_dir .config $XDG_CONFIG_HOME
-copy_file .specialconfig $HOME

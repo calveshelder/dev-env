@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+sudo pacman -S uv
+
+uv tool install --force --python python3.12 aider-chat@latest
+
+echo 'export OLLAMA_API_BASE="http://127.0.0.1:11434"' >> $HOME/.bashrc
