@@ -17,9 +17,8 @@ switch_to() {
 
 if tmux has-session -t=$selected_name 2> /dev/null; then
 	switch_to
-	exit 0
+else 
+	tmux new-session -ds $selected_name -c $selected
+	switch_to
 fi
 
-tmux new-session -ds $selected_name -c $selected
-switch_to
-tmux send-keys -t $selected_name "ready-tmux" ^M
