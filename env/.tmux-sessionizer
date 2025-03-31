@@ -11,5 +11,5 @@ if [[ "$(pwd)" == $HOME/personal ]]; then
     return
 fi
 tmux new-window -dn scratch
-vim .
+nvim .
 clear
