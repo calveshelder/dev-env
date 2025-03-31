@@ -1,3 +1,5 @@
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
 [[ -f ~/.bashrc ]] && . ~/.bashrc
 . "$HOME/.cargo/env"
 
@@ -6,3 +8,4 @@ export PATH="/home/helder/.local/bin:$PATH"
 
 ## All that sweet sweet fzf
 [ -f ~/.fzf.bash ] && source ~/.fzf.bash
+
