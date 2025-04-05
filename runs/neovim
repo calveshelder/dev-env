@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 git clone -b v0.10.4 https://github.com/neovim/neovim.git $HOME/personal/neovim
-sudo pacman -S cmake gettext lua51 lua51-stdlib
+sudo pacman -S base-devel make cmake gettext lua51 lua51-stdlib
 
 cd $HOME/personal/neovim
-make CMAKE_BUILD_TYPE="RelWithDebInfo"
+sudo make CMAKE_BUILD_TYPE="RelWithDebInfo"
 sudo make install
