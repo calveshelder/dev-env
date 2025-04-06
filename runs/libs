@@ -3,3 +3,12 @@
 git clone git@github.com:junegunn/fzf.git $HOME/personal/fzf
 $HOME/personal/fzf/install
 
+#jq
+git clone --recursive https://github.com/jqlang/jq.git $HOME/personal/jq
+cd $HOME/personal/jq
+autoreconf -i
+./configure
+make
+sudo make install
+
+
