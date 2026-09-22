@@ -1,0 +1,67 @@
+# A compact prompt: no network modules, custom shell commands or Git status scan.
+"$schema" = 'https://starship.rs/config-schema.json'
+add_newline = false
+scan_timeout = 30
+command_timeout = 400
+palette = 'neon'
+format = '$directory$git_branch$git_state$python$golang$nodejs$php$rust$cmd_duration$line_break$character'
+
+[palettes.neon]
+cyan = '#47EBFF'
+pink = '#FF72D5'
+yellow = '#F5F570'
+text = '#D6E1FF'
+muted = '#93A3B9'
+
+[directory]
+style = 'bold cyan'
+truncation_length = 4
+truncate_to_repo = true
+read_only = ' RO'
+
+[git_branch]
+symbol = 'git:'
+style = 'pink'
+format = '[$symbol$branch]($style) '
+truncation_length = 32
+
+[git_state]
+style = 'yellow'
+
+[git_status]
+disabled = true
+
+[character]
+success_symbol = '[❯](bold cyan)'
+error_symbol = '[❯](bold pink)'
+vimcmd_symbol = '[◈](bold yellow)'
+
+[golang]
+symbol = 'go '
+format = '[$symbol($version )]($style)'
+style = 'muted'
+
+[python]
+symbol = 'py '
+format = '[$symbol($version )(\($virtualenv\) )]($style)'
+style = 'muted'
+
+[nodejs]
+symbol = 'node '
+format = '[$symbol($version )]($style)'
+style = 'muted'
+
+[php]
+symbol = 'php '
+format = '[$symbol($version )]($style)'
+style = 'muted'
+
+[rust]
+symbol = 'rs '
+format = '[$symbol($version )]($style)'
+style = 'muted'
+
+[cmd_duration]
+min_time = 5000
+format = '[took $duration]($style) '
+style = 'yellow'

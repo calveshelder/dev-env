@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""Choose a project and reuse its tmux workspace. No project code is sourced."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+
+
+DEFAULT_ROOTS = ("~/code", "~/personal", "~/SpiderOnline/Projects", "~/Projects", "~/src")
+SKIP_DIRS = {"node_modules", "vendor", "target", "dist", "build", "__pycache__", "venv", "site-packages"}
+PROJECT_MARKERS = (".git", "go.mod", "go.work", "package.json", "composer.json", "pyproject.toml", "Cargo.toml")
+
+
+def roots_file() -> Path:
+    return Path.home() / ".config" / "neon" / "projects"
+
+
+def safe_directory(value: str | Path) -> Path:
+    """Canonicalize literal paths; shell variables and command syntax are never evaluated."""
+    path = Path(value).expanduser().resolve(strict=True)
+    if not path.is_dir():
+        raise ValueError(f"Not a directory: {path}")
+    if any(ord(char) < 32 or ord(char) == 127 for char in str(path)):
+        raise ValueError("Project directory names cannot contain control characters.")
+    return path
+
+
+def project_roots(config: Path | None = None) -> list[Path]:
+    config = config or roots_file()
+    if config.is_file():
+        values = [line.strip() for line in config.read_text(encoding="utf-8").splitlines()]
+        values = [line for line in values if line and not line.startswith("#")]
+    else:
+        values = list(DEFAULT_ROOTS)
+    result = []
+    for value in values:
+        # A config should behave identically regardless of the current working directory.
+        expanded = Path(value).expanduser()
+        if not expanded.is_absolute():
+            continue
+        try:
+            path = safe_directory(expanded)
+        except (OSError, ValueError):
+            continue
+        if path not in result:
+            result.append(path)
+    return result
+
+
+def visible_children(path: Path) -> list[Path]:
+    try:
+        children = sorted(path.iterdir(), key=lambda p: p.name.casefold())
+    except OSError:
+        return []
+    result = []
+    for child in children:
+        if child.name.startswith(".") or child.name in SKIP_DIRS:
+            continue
+        try:
+            result.append(safe_directory(child))
+        except (OSError, ValueError):
+            pass
+    return result
+
+
+def discover_projects(roots: list[Path]) -> list[Path]:
+    result: set[Path] = set()
+    for root in roots:
+        if any((root / marker).exists() for marker in PROJECT_MARKERS):
+            result.add(root)
+        for child in visible_children(root):
+            result.add(child)
+            # Go one level deeper through grouping folders such as code/challenges.
+            # Project internals and large dependency trees never become a recursive scan.
+            if not any((child / marker).exists() for marker in PROJECT_MARKERS):
+                result.update(visible_children(child))
+    return sorted(result, key=lambda p: str(p).casefold())
+
+
+def choose_project(projects: list[Path]) -> Path | None:
+    fzf = shutil.which("fzf")
+    if not fzf:
+        raise RuntimeError("Install fzf for the project picker, or run: tmux-sessionizer /path/to/project")
+    if not projects:
+        raise RuntimeError(f"No project directories found. Add parent directories to {roots_file()}, one per line.")
+    options = {os.fsencode(str(path)): path for path in projects}
+    # NUL records preserve spaces, quotes, and shell metacharacters without escaping.
+    result = subprocess.run(
+        [fzf, "--read0", "--print0", "--height=70%", "--layout=reverse", "--border",
+         "--prompt=PROJECT > ", "--header=Enter: connect  |  Esc: cancel",
+         "--color=bg:#090e17,fg:#d6e1ff,hl:#47ebff,fg+:#f5f570,hl+:#ff72d5,pointer:#ff72d5,border:#344568"],
+        input=b"\0".join(options) + b"\0", stdout=subprocess.PIPE, check=False,
+    )
+    if result.returncode in (1, 130):
+        return None
+    if result.returncode:
+        raise RuntimeError(f"fzf exited with status {result.returncode}.")
+    selected = result.stdout.removesuffix(b"\0")
+    if selected not in options:
+        raise RuntimeError("The picker returned an unexpected selection.")
+    return options[selected]
+
+
+def session_name(path: Path) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", path.name).strip("-_")[:28] or "project"
+    digest = hashlib.sha256(os.fsencode(str(path))).hexdigest()[:12]
+    return f"neon-{slug}-{digest}"
+
+
+def tmux_capture(tmux: str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run([tmux, *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+
+
+def checked_tmux(tmux: str, *args: str) -> str:
+    result = tmux_capture(tmux, *args)
+    if result.returncode:
+        detail = result.stderr.strip() or f"exit status {result.returncode}"
+        raise RuntimeError(f"tmux {args[0]} failed: {detail}")
+    return result.stdout.strip()
+
+
+def connect_project(path: Path, inside_tmux: bool | None = None) -> int:
+    tmux = shutil.which("tmux")
+    if not tmux:
+        raise RuntimeError("Install tmux first, then run tmux-sessionizer again.")
+    path = safe_directory(path)
+    target = "=" + session_name(path)
+    if tmux_capture(tmux, "has-session", "-t", target).returncode != 0:
+        created = tmux_capture(tmux, "new-session", "-d", "-P", "-F", "#{session_id}:#{window_id}",
+                               "-s", session_name(path), "-n", "edit", "-c", str(path))
+        if created.returncode:
+            # Another simultaneous picker may have created this same workspace.
+            if tmux_capture(tmux, "has-session", "-t", target).returncode != 0:
+                raise RuntimeError("Could not create the tmux workspace: " + created.stderr.strip())
+        else:
+            checked_tmux(tmux, "new-window", "-d", "-t", target, "-n", "run", "-c", str(path))
+            match = re.fullmatch(r"\$\d+:(@\d+)", created.stdout.strip())
+            if shutil.which("nvim") and match:
+                # Only a fixed command is typed; the untrusted directory arrived via -c argv.
+                # No .tmux-sessionizer, .env, or other project file is executed by this helper.
+                checked_tmux(tmux, "send-keys", "-t", match.group(1), "-l", "nvim .")
+                checked_tmux(tmux, "send-keys", "-t", match.group(1), "Enter")
+    if inside_tmux is None:
+        inside_tmux = bool(os.environ.get("TMUX"))
+    action = "switch-client" if inside_tmux else "attach-session"
+    # No -d: never detach someone else's attached client.
+    return subprocess.call([tmux, action, "-t", target])
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("directory", nargs="?", help="Literal project directory; omit for the fuzzy picker")
+    parser.add_argument("--list", action="store_true", help="Print discovered directories without opening tmux")
+    args = parser.parse_args(argv)
+    try:
+        if args.list:
+            for path in discover_projects(project_roots()):
+                print(path)
+            return 0
+        project = safe_directory(args.directory) if args.directory else choose_project(discover_projects(project_roots()))
+        return connect_project(project) if project is not None else 0
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"neon: {error}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

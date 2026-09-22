@@ -1,0 +1,10 @@
+# Used only if you have no Atuin config yet. Existing settings are retained.
+auto_sync = false
+update_check = false
+search_mode = 'fuzzy'
+filter_mode = 'global'
+style = 'compact'
+inline_height = 15
+show_help = true
+show_preview = true
+enter_accept = false

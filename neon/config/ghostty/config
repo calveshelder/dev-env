@@ -1,0 +1,29 @@
+# NEON // Ghostty on Linux or macOS. Windows uses Windows Terminal + WSL.
+# Keep the terminal's installed font fallback; set font-family locally if desired.
+font-size = 12
+window-padding-x = 10
+window-padding-y = 8
+cursor-style = block
+cursor-style-blink = false
+shell-integration-features = no-cursor
+background = #090e17
+foreground = #d6e1ff
+cursor-color = #f5f570
+selection-background = #344568
+selection-foreground = #ffffff
+palette = 0=#171b29
+palette = 1=#f48b91
+palette = 2=#a0ebaf
+palette = 3=#f5f570
+palette = 4=#80a7ff
+palette = 5=#ff72d5
+palette = 6=#47ebff
+palette = 7=#d6e1ff
+palette = 8=#8c97af
+palette = 9=#ffb0b4
+palette = 10=#c5f5ce
+palette = 11=#ffe1a5
+palette = 12=#aec7ff
+palette = 13=#ebc9ff
+palette = 14=#b0f5ff
+palette = 15=#ffffff
