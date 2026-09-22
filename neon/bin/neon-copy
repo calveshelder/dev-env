@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""Copy UTF-8 stdin to a desktop clipboard without terminal escape sequences.
+
+Backend selection is importable and injectable for tests. No shell is invoked;
+clipboard data is sent only through the selected process's standard input.
+"""
+
+from __future__ import annotations
+
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import tempfile
+from collections.abc import Callable, Mapping
+
+
+class ClipboardError(RuntimeError):
+    """A clipboard endpoint is unavailable or rejected the copy operation."""
+
+
+def is_wsl(system: str | None = None, release: str | None = None) -> bool:
+    """Require a Linux Microsoft/WSL kernel, not merely an inherited env var."""
+    system = platform.system() if system is None else system
+    release = platform.release() if release is None else release
+    return system == "Linux" and any(
+        marker in release.lower() for marker in ("microsoft", "wsl")
+    )
+
+
+def choose_backend(
+    *,
+    env: Mapping[str, str] | None = None,
+    system: str | None = None,
+    release: str | None = None,
+    which: Callable[[str], str | None] | None = None,
+) -> tuple[str, list[str]] | None:
+    """Return (backend_name, argv), or None when no endpoint is available.
+
+    WSL prefers its Windows clipboard. A missing clip.exe can fall back to an
+    available Linux display. An endpoint that actually fails is not retried on
+    a different clipboard, so a failed copy never silently targets another one.
+    """
+    env = os.environ if env is None else env
+    system = platform.system() if system is None else system
+    if which is None:
+        which = lambda name: shutil.which(name, path=env.get("PATH", os.defpath))
+
+    if is_wsl(system, release):
+        executable = which("clip.exe")
+        if executable:
+            return "wsl", [executable]
+    if system == "Darwin":
+        executable = which("pbcopy")
+        if executable:
+            return "macos", [executable]
+    if env.get("WAYLAND_DISPLAY"):
+        executable = which("wl-copy")
+        if executable:
+            return "wayland", [executable, "--type", "text/plain;charset=utf-8"]
+    if env.get("DISPLAY"):
+        executable = which("xclip")
+        if executable:
+            return "x11", [executable, "-selection", "clipboard", "-in"]
+    return None
+
+
+def encode_payload(backend: str, data: bytes) -> bytes:
+    """Use UTF-16LE for clip.exe; retain original UTF-8 bytes elsewhere."""
+    if backend != "wsl":
+        return data
+    try:
+        return data.decode("utf-8").encode("utf-16le")
+    except UnicodeDecodeError:
+        raise ClipboardError("Windows clipboard input must be valid UTF-8 text.") from None
+
+
+def copy_bytes(
+    data: bytes,
+    backend: tuple[str, list[str]] | None = None,
+    *,
+    timeout: float = 5.0,
+) -> None:
+    """Copy bytes or raise ClipboardError; never write clipboard data to output."""
+    backend = choose_backend() if backend is None else backend
+    if backend is None:
+        raise ClipboardError(
+            "No clipboard endpoint: use clip.exe on WSL, pbcopy on macOS, "
+            "wl-copy with WAYLAND_DISPLAY, or xclip with DISPLAY."
+        )
+    name, argv = backend
+    payload = encode_payload(name, data)
+    # macOS pbcopy chooses its text encoding from the locale. UTF-8 is a macOS
+    # LC_CTYPE value; this is child-only and does not change shell state.
+    child_env = None
+    if name == "macos":
+        child_env = dict(os.environ, LC_CTYPE="UTF-8")
+        child_env.pop("LC_ALL", None)
+
+    # wl-copy/xclip may fork a selection owner. A temporary stderr file avoids
+    # waiting for that long-lived child's inherited pipe to close.
+    try:
+        with tempfile.TemporaryFile() as errors:
+            result = subprocess.run(
+                argv,
+                input=payload,
+                stdout=subprocess.DEVNULL,
+                stderr=errors,
+                env=child_env,
+                timeout=timeout,
+                check=False,
+            )
+            if result.returncode:
+                errors.seek(0)
+                diagnostic = errors.read(2048).decode("utf-8", errors="replace")
+                # Never repeat clipboard text if an endpoint includes it in an
+                # error message. Strip controls to avoid terminal manipulation.
+                for content in (data, payload):
+                    text = content.decode("utf-8", errors="replace")
+                    if text:
+                        diagnostic = diagnostic.replace(text, "[clipboard content]")
+                diagnostic = " ".join(diagnostic.split())
+                diagnostic = "".join(c for c in diagnostic if c.isprintable())[:500]
+                detail = f": {diagnostic}" if diagnostic else ""
+                raise ClipboardError(
+                    f"{name} clipboard endpoint failed (exit {result.returncode}){detail}"
+                )
+    except subprocess.TimeoutExpired:
+        raise ClipboardError(
+            f"{name} clipboard endpoint timed out after {timeout:g} seconds."
+        ) from None
+    except OSError as error:
+        raise ClipboardError(
+            f"Could not run {name} clipboard endpoint: {error.strerror or type(error).__name__}."
+        ) from None
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv in (["--help"], ["-h"]):
+        print("Usage: command | neon-copy\nCopy UTF-8 stdin to the desktop clipboard.")
+        return 0
+    if argv:
+        print("neon-copy: expected stdin, not arguments; use --help.", file=sys.stderr)
+        return 2
+    try:
+        backend = choose_backend()
+        if backend is None:
+            # Report a missing endpoint before potentially waiting for stdin.
+            copy_bytes(b"")
+            return 1
+        copy_bytes(sys.stdin.buffer.read(), backend)
+    except ClipboardError as error:
+        print(f"neon-copy: {error}", file=sys.stderr)
+        return 1
+    except OSError:
+        print("neon-copy: could not read standard input.", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        return 130
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

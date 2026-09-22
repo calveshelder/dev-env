@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Entry point resolves through symlinks, so the repo can live anywhere."""
+from pathlib import Path
+import runpy
+runpy.run_path(str(Path(__file__).resolve().parents[1] / 'lib/neon_cli.py'), run_name='__main__')

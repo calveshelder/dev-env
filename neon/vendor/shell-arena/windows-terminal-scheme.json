@@ -1,0 +1,23 @@
+{
+  "name": "Shell Arena",
+  "background": "#090E17",
+  "foreground": "#D6E1FF",
+  "cursorColor": "#F5F570",
+  "selectionBackground": "#344568",
+  "black": "#171B29",
+  "red": "#F48B91",
+  "green": "#A0EBAF",
+  "yellow": "#F5F570",
+  "blue": "#80A7FF",
+  "purple": "#FF72D5",
+  "cyan": "#47EBFF",
+  "white": "#D6E1FF",
+  "brightBlack": "#8C97AF",
+  "brightRed": "#FFB0B4",
+  "brightGreen": "#C5F5CE",
+  "brightYellow": "#FFE1A5",
+  "brightBlue": "#AEC7FF",
+  "brightPurple": "#EBC9FF",
+  "brightCyan": "#B0F5FF",
+  "brightWhite": "#FFFFFF"
+}
